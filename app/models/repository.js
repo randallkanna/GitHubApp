@@ -1,6 +1,6 @@
 import DS from 'ember-data';
 
-App.Repository = DS.Model.extend({
+export default DS.Model.extend({
   repoTitle: DS.attr('string'),
   repoDescription: DS.attr('string'),
   repoFiles: DS.attr('string'),

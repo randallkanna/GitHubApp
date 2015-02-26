@@ -1,6 +1,6 @@
 import DS from 'ember-data';
 
-App.User = DS.Model.extend({
+export default DS.Model.extend({
   profileImage: DS.attr('string'),
   profileLink: DS.attr('string'),
   username: DS.attr('string'),
