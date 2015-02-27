@@ -6,8 +6,9 @@ var belongsTo = DS.belongsTo;
 var hasMany = DS.hasMany;
 
 export default Model.extend({
-  title: attr('string'),
+  name: attr('string'),
   description: attr('string'),
+  url: attr('string'),
   user: belongsTo('user'),
   issues: hasMany('issue'),
   pullRequests: hasMany('pullrequest'),
