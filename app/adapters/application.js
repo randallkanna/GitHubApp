@@ -1,7 +1,7 @@
-export default DS.RESTAdapter.extend({
-	host: 'https://api.github.com/',
+// export default DS.RESTAdapter.extend({
+// 	host: 'https://api.github.com/',
 	
-	headers: {
-		"API_KEY": 'secretKey',
-	}
-})
+// 	headers: {
+// 		"API_KEY": 'secretKey',
+// 	}
+// })
