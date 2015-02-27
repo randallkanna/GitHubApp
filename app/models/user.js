@@ -5,14 +5,16 @@ var Model = DS.Model;
 var hasMany = DS.hasMany;
 
 export default Model.extend({
-  profileImage: attr('string'),
-  profileLink: attr('string'),
-  username: attr('string'),
+  avatar_url: attr('string'),
+  url: attr('string'),
+  login: attr('string'),
   name: attr('string'),
+  location: attr('string'),
+  bio: attr('string'),
   company: attr('string'),
-  blogURL: attr('string'),
-  followerCount: attr('integer'),
-  followingCount: attr('integer'),
-  accountCreationDate: attr('date'),
+  blog: attr('string'),
+  followers: attr('integer'),
+  following: attr('integer'),
+  created_at: attr('date'),
   repositories: hasMany('repository')
 });
