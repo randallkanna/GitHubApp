@@ -1,789 +1,1114 @@
-/*!
- * @overview  Github.js
- *
- * @copyright (c) 2013 Michael Aufreiter, Development Seed
- *            Github.js is freely distributable.
- *
- * @license   Licensed under MIT license
- *
- *            For all details and documentation:
- *            http://substance.io/michael/github
- */
+/*
+  gh3.js
+  Created : 2012.07.25 by k33g
 
-(function() {
+  TODO :
+    - Repositories for an organization
+    - Search : http://developer.github.com/v3/search/
+    - ...
+  License
 
-  // Initial Setup
-  // -------------
+    - Gh3 is available under the terms of the [MIT-License](http://en.wikipedia.org/wiki/MIT_License#License_terms).
+    - Copyright 2014-2015, Philippe Charrière
 
-  var XMLHttpRequest,  _;
+  History :
+    - 2012.07.25 : '0.0.1' : first version
+    - 2012.07.26 : '0.0.2' : fixes
+    - 2012.07.26 : '0.0.3' : gists pagination
+    - 2012.07.28 : '0.0.4' :
+      * refactoring : Gh3.Helper
+      * gists filtering
+      * gist comments filtering
+      * file commits filtering
+      * commits sorting
+      * new Type : Gh3.Repositories (with pagination)
+    - 2012.07.29 : '0.0.5' :
+      * Gh3.Repositories : add search ability
+      * add Gh3.Users : search user ability
+    - 2012.07.29 : '0.0.6' :
+      * async.js compliant
+    - 2012.08.02 : '0.0.7' :
+      * Node compliant for the future ... be careful to dependencies
+    - 2014.04.20 : '1.0.0' : bower package + semantic versioning
+    - 2014.04.20 : '1.0.1' : temporary fixes
+*/
+
+(function () {
+
+  //var Gh3 = this.Gh3 = {}
+  var root = this
+  , Gh3
+  , Kind
+  , Base64;
+
   if (typeof exports !== 'undefined') {
-      XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
-      _ = require('underscore');
-      btoa = require('btoa');
+    Gh3 = exports;
   } else {
-      _ = window._;
-  }
-  //prefer native XMLHttpRequest always
-  if (typeof window !== 'undefined' && typeof window.XMLHttpRequest !== 'undefined'){
-      XMLHttpRequest = window.XMLHttpRequest;
+    Gh3 = root.Gh3 = {};
   }
 
-
-  var API_URL = 'https://api.github.com';
-
-  var Github = function(options) {
-
-    // HTTP Request Abstraction
-    // =======
-    //
-    // I'm not proud of this and neither should you be if you were responsible for the XMLHttpRequest spec.
-
-    function _request(method, path, data, cb, raw, sync) {
-      function getURL() {
-        var url = path.indexOf('//') >= 0 ? path : API_URL + path;
-        return url + ((/\?/).test(url) ? "&" : "?") + (new Date()).getTime();
-      }
-
-      var xhr = new XMLHttpRequest();
-      if (!raw) {xhr.dataType = "json";}
-
-      xhr.open(method, getURL(), !sync);
-      if (!sync) {
-        xhr.onreadystatechange = function () {
-          if (this.readyState == 4) {
-            if (this.status >= 200 && this.status < 300 || this.status === 304) {
-              cb(null, raw ? this.responseText : this.responseText ? JSON.parse(this.responseText) : true, this);
-            } else {
-              cb({path: path, request: this, error: this.status});
-            }
-          }
-        };
-      }
-      xhr.setRequestHeader('Accept','application/vnd.github.v3.raw+json');
-      xhr.setRequestHeader('Content-Type','application/json;charset=UTF-8');
-      if ((options.token) || (options.username && options.password)) {
-        var authorization = options.token ? 'token ' + options.token : 'Basic ' + btoa(options.username + ':' + options.password);
-        xhr.setRequestHeader('Authorization', authorization);
-      }
-      if (data)
-        xhr.send(JSON.stringify(data));
-      else
-        xhr.send();
-      if (sync) return xhr.response;
-    }
-
-    function _requestAllPages(path, cb) {
-      var results = [];
-      (function iterate() {
-        _request("GET", path, null, function(err, res, xhr) {
-          if (err) {
-            return cb(err);
-          }
-
-          results.push.apply(results, res);
-
-          var links = (xhr.getResponseHeader('link') || '').split(/\s*,\s*/g),
-              next = _.find(links, function(link) { return /rel="next"/.test(link); });
-
-          if (next) {
-            next = (/<(.*)>/.exec(next) || [])[1];
-          }
-
-          if (!next) {
-            cb(err, results);
-          } else {
-            path = next;
-            iterate();
-          }
-        });
-      })();
-    }
-
-
-    // User API
-    // =======
-
-    Github.User = function() {
-      this.repos = function(cb) {
-        // Github does not always honor the 1000 limit so we want to iterate over the data set.
-        _requestAllPages("/user/repos?type=all&per_page=1000&sort=updated", function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // List user organizations
-      // -------
-
-      this.orgs = function(cb) {
-        _request("GET", "/user/orgs", null, function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // List authenticated user's gists
-      // -------
-
-      this.gists = function(cb) {
-        _request("GET", "/gists", null, function(err, res) {
-          cb(err,res);
-        });
-      };
-
-      // List authenticated user's unread notifications
-      // -------
-
-      this.notifications = function(cb) {
-        _request("GET", "/notifications", null, function(err, res) {
-          cb(err,res);
-        });
-      };
-
-      // Show user information
-      // -------
-
-      this.show = function(username, cb) {
-        var command = username ? "/users/"+username : "/user";
-
-        _request("GET", command, null, function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // List user repositories
-      // -------
-
-      this.userRepos = function(username, cb) {
-        // Github does not always honor the 1000 limit so we want to iterate over the data set.
-        _requestAllPages("/users/"+username+"/repos?type=all&per_page=1000&sort=updated", function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // List a user's gists
-      // -------
-
-      this.userGists = function(username, cb) {
-        _request("GET", "/users/"+username+"/gists", null, function(err, res) {
-          cb(err,res);
-        });
-      };
-
-      // List organization repositories
-      // -------
-
-      this.orgRepos = function(orgname, cb) {
-        // Github does not always honor the 1000 limit so we want to iterate over the data set.
-        _requestAllPages("/orgs/"+orgname+"/repos?type=all&&page_num=1000&sort=updated&direction=desc", function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // Follow user
-      // -------
-
-      this.follow = function(username, cb) {
-        _request("PUT", "/user/following/"+username, null, function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // Unfollow user
-      // -------
-
-      this.unfollow = function(username, cb) {
-        _request("DELETE", "/user/following/"+username, null, function(err, res) {
-          cb(err, res);
-        });
-      };
-
-      // Create a repo
-      // -------
-      this.createRepo = function(options, cb) {
-        _request("POST", "/user/repos", options, cb);
-      };
-
-    };
-
-    // Repository API
-    // =======
-
-    Github.Repository = function(options) {
-      var repo = options.name;
-      var user = options.user;
-
-      var that = this;
-      var repoPath = "/repos/" + user + "/" + repo;
-
-      var currentTree = {
-        "branch": null,
-        "sha": null
-      };
-
-
-      // Delete a repo
-      // --------
-
-      this.deleteRepo = function(cb) {
-        _request("DELETE", repoPath, options, cb);
-      };
-
-      // Uses the cache if branch has not been changed
-      // -------
-
-      function updateTree(branch, cb) {
-        if (branch === currentTree.branch && currentTree.sha) return cb(null, currentTree.sha);
-        that.getRef("heads/"+branch, function(err, sha) {
-          currentTree.branch = branch;
-          currentTree.sha = sha;
-          cb(err, sha);
-        });
-      }
-
-      // Get a particular reference
-      // -------
-
-      this.getRef = function(ref, cb) {
-        _request("GET", repoPath + "/git/refs/" + ref, null, function(err, res) {
-          if (err) return cb(err);
-          cb(null, res.object.sha);
-        });
-      };
-
-      // Create a new reference
-      // --------
-      //
-      // {
-      //   "ref": "refs/heads/my-new-branch-name",
-      //   "sha": "827efc6d56897b048c772eb4087f854f46256132"
-      // }
-
-      this.createRef = function(options, cb) {
-        _request("POST", repoPath + "/git/refs", options, cb);
-      };
-
-      // Delete a reference
-      // --------
-      //
-      // repo.deleteRef('heads/gh-pages')
-      // repo.deleteRef('tags/v1.0')
-
-      this.deleteRef = function(ref, cb) {
-        _request("DELETE", repoPath + "/git/refs/"+ref, options, cb);
-      };
-
-      // Create a repo
-      // -------
-
-      this.createRepo = function(options, cb) {
-        _request("POST", "/user/repos", options, cb);
-      };
-
-      // Delete a repo
-      // --------
-
-      this.deleteRepo = function(cb) {
-        _request("DELETE", repoPath, options, cb);
-      };
-
-      // List all tags of a repository
-      // -------
-
-      this.listTags = function(cb) {
-        _request("GET", repoPath + "/tags", null, function(err, tags) {
-          if (err) return cb(err);
-          cb(null, tags);
-        });
-      };
-
-      // List all pull requests of a respository
-      // -------
-
-      this.listPulls = function(state, cb) {
-        _request("GET", repoPath + "/pulls" + (state ? '?state=' + state : ''), null, function(err, pulls) {
-          if (err) return cb(err);
-          cb(null, pulls);
-        });
-      };
-
-      // Gets details for a specific pull request
-      // -------
-
-      this.getPull = function(number, cb) {
-        _request("GET", repoPath + "/pulls/" + number, null, function(err, pull) {
-          if (err) return cb(err);
-          cb(null, pull);
-        });
-      };
-
-      // Retrieve the changes made between base and head
-      // -------
-
-      this.compare = function(base, head, cb) {
-        _request("GET", repoPath + "/compare/" + base + "..." + head, null, function(err, diff) {
-          if (err) return cb(err);
-          cb(null, diff);
-        });
-      };
-
-      // List all branches of a repository
-      // -------
-
-      this.listBranches = function(cb) {
-        _request("GET", repoPath + "/git/refs/heads", null, function(err, heads) {
-          if (err) return cb(err);
-          cb(null, _.map(heads, function(head) { return _.last(head.ref.split('/')); }));
-        });
-      };
-
-      // Retrieve the contents of a blob
-      // -------
-
-      this.getBlob = function(sha, cb) {
-        _request("GET", repoPath + "/git/blobs/" + sha, null, cb, 'raw');
-      };
-
-      // For a given file path, get the corresponding sha (blob for files, tree for dirs)
-      // -------
-
-      this.getSha = function(branch, path, cb) {
-        if (!path || path === "") return that.getRef("heads/"+branch, cb);
-        _request("GET", repoPath + "/contents/"+path, {ref: branch}, function(err, pathContent) {
-          if (err) return cb(err);
-          cb(null, pathContent.sha);
-        });
-      };
-
-      // Retrieve the tree a commit points to
-      // -------
-
-      this.getTree = function(tree, cb) {
-        _request("GET", repoPath + "/git/trees/"+tree, null, function(err, res) {
-          if (err) return cb(err);
-          cb(null, res.tree);
-        });
-      };
-
-      // Post a new blob object, getting a blob SHA back
-      // -------
-
-      this.postBlob = function(content, cb) {
-        if (typeof(content) === "string") {
-          content = {
-            "content": content,
-            "encoding": "utf-8"
-          };
-        } else {
-          	content = {
-              "content": btoa(String.fromCharCode.apply(null, new Uint8Array(content))),
-              "encoding": "base64"
-            };
-          }
-
-        _request("POST", repoPath + "/git/blobs", content, function(err, res) {
-          if (err) return cb(err);
-          cb(null, res.sha);
-        });
-      };
-
-      // Update an existing tree adding a new blob object getting a tree SHA back
-      // -------
-
-      this.updateTree = function(baseTree, path, blob, cb) {
-        var data = {
-          "base_tree": baseTree,
-          "tree": [
-            {
-              "path": path,
-              "mode": "100644",
-              "type": "blob",
-              "sha": blob
-            }
-          ]
-        };
-        _request("POST", repoPath + "/git/trees", data, function(err, res) {
-          if (err) return cb(err);
-          cb(null, res.sha);
-        });
-      };
-
-      // Post a new tree object having a file path pointer replaced
-      // with a new blob SHA getting a tree SHA back
-      // -------
-
-      this.postTree = function(tree, cb) {
-        _request("POST", repoPath + "/git/trees", { "tree": tree }, function(err, res) {
-          if (err) return cb(err);
-          cb(null, res.sha);
-        });
-      };
-
-      // Create a new commit object with the current commit SHA as the parent
-      // and the new tree SHA, getting a commit SHA back
-      // -------
-
-      this.commit = function(parent, tree, message, cb) {
-        var user = new Github.User();
-        user.show(null, function(err, userData){
-          if (err) return cb(err);
-          var data = {
-            "message": message,
-            "author": {
-              "name": options.user,
-              "email": userData.email
-            },
-            "parents": [
-              parent
-            ],
-            "tree": tree
-          };
-          _request("POST", repoPath + "/git/commits", data, function(err, res) {
-            if (err) return cb(err);
-            currentTree.sha = res.sha; // update latest commit
-            cb(null, res.sha);
-          });
-        });
-      };
-
-      // Update the reference of your head to point to the new commit SHA
-      // -------
-
-      this.updateHead = function(head, commit, cb) {
-        _request("PATCH", repoPath + "/git/refs/heads/" + head, { "sha": commit }, function(err, res) {
-          cb(err);
-        });
-      };
-
-      // Show repository information
-      // -------
-
-      this.show = function(cb) {
-        _request("GET", repoPath, null, cb);
-      };
-
-      // Get contents
-      // --------
-
-      this.contents = function(ref, path, cb) {
-        _request("GET", repoPath + "/contents/"+path, { ref: ref }, cb);
-      };
-
-      // Fork repository
-      // -------
-
-      this.fork = function(cb) {
-        _request("POST", repoPath + "/forks", null, cb);
-      };
-
-      // Branch repository
-      // --------
-
-      this.branch = function(oldBranch,newBranch,cb) {
-        if(arguments.length === 2 && typeof arguments[1] === "function") {
-          cb = newBranch;
-          newBranch = oldBranch;
-          oldBranch = "master";
+  Gh3.VERSION = '1.0.0'; //2014.04.20
+
+  //Object Model Tools (helpers) like Backbone
+  Kind = function(){};
+
+  Kind.inherits = function (parent, protoProps, staticProps) {
+    var child
+      , ctor = function(){}
+      , merge = function (destination, source) {
+        for (var prop in source) {
+          destination[prop] = source[prop];
         }
-        this.getRef("heads/" + oldBranch, function(err,ref) {
-          if(err && cb) return cb(err);
-          that.createRef({
-            ref: "refs/heads/" + newBranch,
-            sha: ref
-          },cb);
-        });
-      };
-
-      // Create pull request
-      // --------
-
-      this.createPullRequest = function(options, cb) {
-        _request("POST", repoPath + "/pulls", options, cb);
-      };
-
-      // List hooks
-      // --------
-
-      this.listHooks = function(cb) {
-        _request("GET", repoPath + "/hooks", null, cb);
-      };
-
-      // Get a hook
-      // --------
-
-      this.getHook = function(id, cb) {
-        _request("GET", repoPath + "/hooks/" + id, null, cb);
-      };
-
-      // Create a hook
-      // --------
-
-      this.createHook = function(options, cb) {
-        _request("POST", repoPath + "/hooks", options, cb);
-      };
-
-      // Edit a hook
-      // --------
-
-      this.editHook = function(id, options, cb) {
-        _request("PATCH", repoPath + "/hooks/" + id, options, cb);
-      };
-
-      // Delete a hook
-      // --------
-
-      this.deleteHook = function(id, cb) {
-        _request("DELETE", repoPath + "/hooks/" + id, null, cb);
-      };
-
-      // Read file at given path
-      // -------
-
-      this.read = function(branch, path, cb) {
-        _request("GET", repoPath + "/contents/"+path, {ref: branch}, function(err, obj) {
-          if (err && err.error === 404) return cb("not found", null, null);
-
-          if (err) return cb(err);
-          cb(null, obj);
-        }, true);
-      };
-
-
-      // Remove a file
-      // -------
-
-      this.remove = function(branch, path, cb) {
-        that.getSha(branch, path, function(err, sha) {
-          if (err) return cb(err);
-          _request("DELETE", repoPath + "/contents/" + path, {
-            message: path + " is removed",
-            sha: sha,
-            branch: branch
-          }, cb);
-        });
-      };
-
-      // Delete a file from the tree
-      // -------
-
-      this.delete = function(branch, path, cb) {
-        that.getSha(branch, path, function(err, sha) {
-          if (!sha) return cb("not found", null);
-          var delPath = repoPath + "/contents/" + path;
-          var params = {
-            "message": "Deleted " + path,
-            "sha": sha
-          };
-          delPath += "?message=" + encodeURIComponent(params.message);
-          delPath += "&sha=" + encodeURIComponent(params.sha);
-          delPath += '&branch=' + encodeURIComponent(branch);
-          _request("DELETE", delPath, null, cb);
-        });
-      };
-
-      // Move a file to a new location
-      // -------
-
-      this.move = function(branch, path, newPath, cb) {
-        updateTree(branch, function(err, latestCommit) {
-          that.getTree(latestCommit+"?recursive=true", function(err, tree) {
-            // Update Tree
-            _.each(tree, function(ref) {
-              if (ref.path === path) ref.path = newPath;
-              if (ref.type === "tree") delete ref.sha;
-            });
-
-            that.postTree(tree, function(err, rootTree) {
-              that.commit(latestCommit, rootTree, 'Deleted '+path , function(err, commit) {
-                that.updateHead(branch, commit, function(err) {
-                  cb(err);
-                });
-              });
-            });
-          });
-        });
-      };
-
-      // Write file contents to a given branch and path
-      // -------
-
-      this.write = function(branch, path, content, message, cb) {
-        that.getSha(branch, path, function(err, sha) {
-          if (err && err.error!=404) return cb(err);
-          _request("PUT", repoPath + "/contents/" + path, {
-            message: message,
-            content: btoa(content),
-            branch: branch,
-            sha: sha
-          }, cb);
-        });
-      };
-
-      // List commits on a repository. Takes an object of optional paramaters:
-      // sha: SHA or branch to start listing commits from
-      // path: Only commits containing this file path will be returned
-      // since: ISO 8601 date - only commits after this date will be returned
-      // until: ISO 8601 date - only commits before this date will be returned
-      // -------
-
-      this.getCommits = function(options, cb) {
-          options = options || {};
-          var url = repoPath + "/commits";
-          var params = [];
-          if (options.sha) {
-              params.push("sha=" + encodeURIComponent(options.sha));
-          }
-          if (options.path) {
-              params.push("path=" + encodeURIComponent(options.path));
-          }
-          if (options.since) {
-              var since = options.since;
-              if (since.constructor === Date) {
-                  since = since.toISOString();
-              }
-              params.push("since=" + encodeURIComponent(since));
-          }
-          if (options.until) {
-              var until = options.until;
-              if (until.constructor === Date) {
-                  until = until.toISOString();
-              }
-              params.push("until=" + encodeURIComponent(until));
-          }
-          if (options.page) {
-              params.push("page=" + options.page);
-          }
-          if (options.perpage) {
-              params.push("per_page=" + options.perpage);
-          }
-          if (params.length > 0) {
-              url += "?" + params.join("&");
-          }
-          _request("GET", url, null, cb);
-      };
     };
+    //constructor ....
+    if (protoProps && protoProps.hasOwnProperty('constructor')) {
+      child = protoProps.constructor;
+    } else {
+      child = function(){ parent.apply(this, arguments); };
+    }
 
-    // Gists API
-    // =======
+    //inherits from parent
+    merge(child, parent);
 
-    Github.Gist = function(options) {
-      var id = options.id;
-      var gistPath = "/gists/"+id;
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor();
 
-      // Read the gist
-      // --------
+    //instance properties
+    if(protoProps) merge(child.prototype, protoProps);
 
-      this.read = function(cb) {
-        _request("GET", gistPath, null, function(err, gist) {
-          cb(err, gist);
-        });
-      };
+    //static properties
+    if(staticProps) merge(child, staticProps);
 
-      // Create the gist
-      // --------
-      // {
-      //  "description": "the description for this gist",
-      //    "public": true,
-      //    "files": {
-      //      "file1.txt": {
-      //        "content": "String file contents"
-      //      }
-      //    }
-      // }
+    // Correctly set child's `prototype.constructor`.
+    child.prototype.constructor = child;
 
-      this.create = function(options, cb){
-        _request("POST","/gists", options, cb);
-      };
+    // Set a convenience property in case the parent's prototype is needed later.
+    child.__super__ = parent.prototype;
 
-      // Delete the gist
-      // --------
+    return child
 
-      this.delete = function(cb) {
-        _request("DELETE", gistPath, null, function(err,res) {
-          cb(err,res);
-        });
-      };
-
-      // Fork a gist
-      // --------
-
-      this.fork = function(cb) {
-        _request("POST", gistPath+"/fork", null, function(err,res) {
-          cb(err,res);
-        });
-      };
-
-      // Update a gist with the new stuff
-      // --------
-
-      this.update = function(options, cb) {
-        _request("PATCH", gistPath, options, function(err,res) {
-          cb(err,res);
-        });
-      };
-
-      // Star a gist
-      // --------
-
-      this.star = function(cb) {
-        _request("PUT", gistPath+"/star", null, function(err,res) {
-          cb(err,res);
-        });
-      };
-
-      // Untar a gist
-      // --------
-
-      this.unstar = function(cb) {
-        _request("DELETE", gistPath+"/star", null, function(err,res) {
-          cb(err,res);
-        });
-      };
-
-      // Check if a gist is starred
-      // --------
-
-      this.isStarred = function(cb) {
-        _request("GET", gistPath+"/star", null, function(err,res) {
-          cb(err,res);
-        });
-      };
-    };
-
-    // Issues API
-    // ==========
-
-    Github.Issue = function(options) {
-      var path = "/repos/" + options.user + "/" + options.repo + "/issues";
-
-      this.list = function(options, cb) {
-        _request("GET", path, options, cb);
-      };
-    };
-
-    // Top Level API
-    // -------
-
-    this.getIssues = function(user, repo) {
-      return new Github.Issue({user: user, repo: repo});
-    };
-
-    this.getRepo = function(user, repo) {
-      return new Github.Repository({user: user, name: repo});
-    };
-
-    this.getUser = function() {
-      return new Github.User();
-    };
-
-    this.getGist = function(id) {
-      return new Github.Gist({id: id});
-    };
+  };
+  Kind.extend = function (protoProps, staticProps) {
+    var child = Kind.inherits(this, protoProps, staticProps);
+    child.extend = this.extend;
+    return child;
   };
 
 
-  if (typeof exports !== 'undefined') {
-    // Github = exports;
-    module.exports = Github;
-  } else {
-    window.Github = Github;
+  Base64 = { //http://www.webtoolkit.info/javascript-base64.html
+
+    // private property
+    _keyStr : "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",
+
+    // public method for decoding
+    decode : function (input) {
+      var output = "";
+      var chr1, chr2, chr3;
+      var enc1, enc2, enc3, enc4;
+      var i = 0;
+
+      input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+
+      while (i < input.length) {
+
+        enc1 = this._keyStr.indexOf(input.charAt(i++));
+        enc2 = this._keyStr.indexOf(input.charAt(i++));
+        enc3 = this._keyStr.indexOf(input.charAt(i++));
+        enc4 = this._keyStr.indexOf(input.charAt(i++));
+
+        chr1 = (enc1 << 2) | (enc2 >> 4);
+        chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+        chr3 = ((enc3 & 3) << 6) | enc4;
+
+        output = output + String.fromCharCode(chr1);
+
+        if (enc3 != 64) {
+          output = output + String.fromCharCode(chr2);
+        }
+        if (enc4 != 64) {
+          output = output + String.fromCharCode(chr3);
+        }
+
+      }
+
+      output = Base64._utf8_decode(output);
+
+      return output;
+
+    },
+
+    encode : function (input) {
+        var output = "";
+        var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
+        var i = 0;
+
+        input = Base64._utf8_encode(input);
+
+        while (i < input.length) {
+
+            chr1 = input.charCodeAt(i++);
+            chr2 = input.charCodeAt(i++);
+            chr3 = input.charCodeAt(i++);
+
+            enc1 = chr1 >> 2;
+            enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+            enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+            enc4 = chr3 & 63;
+
+            if (isNaN(chr2)) {
+                enc3 = enc4 = 64;
+            } else if (isNaN(chr3)) {
+                enc4 = 64;
+            }
+
+            output = output +
+            this._keyStr.charAt(enc1) + this._keyStr.charAt(enc2) +
+            this._keyStr.charAt(enc3) + this._keyStr.charAt(enc4);
+
+        }
+
+        return output;
+    },
+
+    // private method for UTF-8 decoding
+    _utf8_decode : function (utftext) {
+      var string = "";
+      var i = 0;
+      var c = c1 = c2 = 0;
+
+      while ( i < utftext.length ) {
+
+        c = utftext.charCodeAt(i);
+
+        if (c < 128) {
+          string += String.fromCharCode(c);
+          i++;
+        }
+        else if((c > 191) && (c < 224)) {
+          c2 = utftext.charCodeAt(i+1);
+          string += String.fromCharCode(((c & 31) << 6) | (c2 & 63));
+          i += 2;
+        }
+        else {
+          c2 = utftext.charCodeAt(i+1);
+          c3 = utftext.charCodeAt(i+2);
+          string += String.fromCharCode(((c & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63));
+          i += 3;
+        }
+
+      }
+
+      return string;
+    },
+
+    // private method for UTF-8 encoding
+    _utf8_encode : function (string) {
+        string = string.replace(/\r\n/g,"\n");
+        var utftext = "";
+
+        for (var n = 0; n < string.length; n++) {
+
+            var c = string.charCodeAt(n);
+
+            if (c < 128) {
+                utftext += String.fromCharCode(c);
+            }
+            else if((c > 127) && (c < 2048)) {
+                utftext += String.fromCharCode((c >> 6) | 192);
+                utftext += String.fromCharCode((c & 63) | 128);
+            }
+            else {
+                utftext += String.fromCharCode((c >> 12) | 224);
+                utftext += String.fromCharCode(((c >> 6) & 63) | 128);
+                utftext += String.fromCharCode((c & 63) | 128);
+            }
+
+        }
+
+        return utftext;
+    }
+
   }
+
+
+  Gh3.Base64 = Base64;
+
+  if (window.XDomainRequest != null) {
+    try {
+      new XDomainRequest()
+      $.support.cors = true
+      $.ajaxSetup.xhr = function() { return new XDomainRequest() }
+    } catch (e) {}
+  }
+
+  Gh3.Helper = Kind.extend({
+
+  },{
+    protocol : "https",
+    domain : "api.github.com",
+    callHttpApi : function (apiParams) {
+      apiParams.url = Gh3.Helper.protocol + "://" + Gh3.Helper.domain + "/" + apiParams.service;
+      if ($.support.cors) {
+        var success = apiParams.success
+        if ($.isFunction(success)) {
+          apiParams.success = function (data, textStatus, jqXHR) {
+            success.call(this, {data: data}, textStatus, jqXHR)
+          }
+        }
+      } else {
+        //delete apiParams.service;
+        apiParams.dataType = 'jsonp';
+      }
+
+      $.ajax(apiParams);
+    }
+  });
+
+  Gh3.Users = Kind.extend({
+
+  },{//static members
+    users : [],
+    search : function (keyword, pagesInfo, callback) {
+      Gh3.Users.users = [];
+      Gh3.Helper.callHttpApi({
+        service : "legacy/user/search/"+keyword,
+        data : pagesInfo,
+        //beforeSend: function (xhr) { xhr.setRequestHeader ("rel", paginationInfo); },
+        success : function(res) {
+          _.each(res.data.users, function (user) {
+            Gh3.Users.users.push(new Gh3.User(user.login, user));
+          });
+
+          if (callback) callback(null, Gh3.Users);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    reverse : function () {
+      Gh3.Users.users.reverse();
+    },
+    sort : function (comparison_func) {
+      if (comparison_func) {
+        Gh3.Users.users.sort(comparison_func);
+      } else {
+        Gh3.Users.users.sort();
+      }
+    },
+    getAll : function() { return Gh3.Users.users; },
+    getByName : function (name) {
+      return _.find(Gh3.Users.users, function (item) {
+        return item.name == name;
+      });
+    },
+    each : function (callback) {
+      _.each(Gh3.Users.users, function (user) {
+        callback(user);
+      });
+    },
+    filter : function (comparator) {
+      return _.filter(Gh3.Users.users, comparator);
+    }
+
+  });
+
+  Gh3.User = Kind.extend({
+
+    constructor : function (login, user_infos) {
+
+      if (user_infos) {
+        for(var prop in user_infos) {
+          this[prop] = user_infos[prop];
+        }
+      }
+
+      if (login) {
+        this.login = login;
+      } else {
+        throw "login !";
+      }
+    },
+    fetch : function (callback) {
+      var that = this;
+
+      Gh3.Helper.callHttpApi({
+        service : "users/"+that.login,
+        success : function (res) {
+          for(var prop in res.data) {
+            that[prop] = res.data[prop];
+          }
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    }
+
+
+  },{});
+
+
+  /*Gists*/
+
+  Gh3.GistComment = Kind.extend({
+    constructor : function (gistCommentData) {
+      for(var prop in gistCommentData) {
+        this[prop] = gistCommentData[prop];
+      }
+    }
+  },{});
+
+  Gh3.Gist = Kind.extend({
+    constructor : function (gistData) {
+      for(var prop in gistData) {
+        this[prop] = gistData[prop];
+      }
+    },
+    fetchContents : function (callback) {
+      var that = this;
+      that.files = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "gists/"+that.id,
+        success : function(res) {
+
+          for(var file in res.data.files) {
+            that.files.push(res.data.files[file]);
+          }
+
+          delete res.data.files;
+
+          for(var prop in res.data) {
+            that[prop] = res.data[prop];
+          }
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+
+    },
+    fetchComments : function (callback) {
+      var that = this;
+      that.comments = [];
+
+
+      Gh3.Helper.callHttpApi({
+        service : "gists/"+that.id+"/comments",
+        success : function(res) {
+          _.each(res.data, function (comment) {
+            that.comments.push(new Gh3.GistComment(comment));
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    getFileByName : function (name) {
+      return _.find(this.files, function (file) {
+        return file.filename == name;
+      });
+    },
+    getFiles : function () {
+      return this.files;
+    },
+    eachFile : function (callback) {
+      _.each(this.files, function (file) {
+        callback(file);
+
+      });
+    },
+    getComments : function () { return this.comments; },
+    eachComment : function (callback) {
+      _.each(this.comments, function (comment) {
+        callback(comment);
+      });
+    },
+    filterComments : function (comparator) {
+      return _.filter(this.comments, comparator);
+    }
+
+  },{});
+
+  Gh3.Gists = Kind.extend({//http://developer.github.com/v3/gists/
+    constructor : function (ghUser) {
+      if (ghUser) this.user = ghUser;
+      this.gists = []
+    },
+    fetch : function (pagesInfo, paginationInfo, callback) {//http://developer.github.com/v3/#pagination
+      var that = this;
+
+      Gh3.Helper.callHttpApi({
+        service : "users/"+that.user.login+"/gists",
+        data : pagesInfo,
+        //beforeSend: function (xhr) { xhr.setRequestHeader ("rel", paginationInfo); }, --> why (pagination)
+        success : function(res) {
+          _.each(res.data, function (gist) {
+            that.gists.push(new Gh3.Gist(gist));
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+
+    getGists : function () { return this.gists; },
+    eachGist : function (callback) {
+      _.each(this.gists, function (gist) {
+        callback(gist);
+      });
+    },
+    filter : function (comparator) {
+      return _.filter(this.gists, comparator);
+    }
+
+  },{});
+
+
+  Gh3.CommitComment = Kind.extend({
+    constructor : function (commitCommentData) {
+      for(var prop in commitCommentData) {
+        this[prop] = commitCommentData[prop];
+      }
+    }
+  },{});
+  Gh3.Commit = Kind.extend({
+    constructor : function (commitInfos, ghUser, repositoryName) {
+      this.author = commitInfos.commit.author;
+      this.date = commitInfos.commit.author.date;
+      this.message = commitInfos.commit.message;
+      this.sha = commitInfos.sha;
+      this.url = commitInfos.url;
+
+      if (ghUser) this.user = ghUser;
+      if (repositoryName) this.repositoryName = repositoryName;
+    },
+    fetchComments : function (callback) {
+      var that = this;
+      that.comments = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/commits/"+that.sha+"/comments",
+        success : function(res) {
+          _.each(res.data, function (comment) {
+            that.comments.push(new Gh3.CommitComment(comment));
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        },
+        beforeSend : function(xhr){
+          xhr.setRequestHeader('Accept','application/vnd.github.v3.full+json');
+        },
+      });
+    },
+    getComments : function () { return this.comments; },
+    eachComment : function (callback) {
+      _.each(this.comments, function (comment) {
+        callback(comment);
+      });
+    }
+  },{});
+
+  Gh3.ItemContent = Kind.extend({
+    constructor : function (contentItem, ghUser, repositoryName, branchName) {
+      for(var prop in contentItem) {
+        this[prop] = contentItem[prop];
+      }
+      if (ghUser) this.user = ghUser;
+      if (repositoryName) this.repositoryName = repositoryName;
+      if (branchName) this.branchName = branchName;
+    }
+
+  },{});
+
+  Gh3.File = Gh3.ItemContent.extend({
+    constructor : function (contentItem, ghUser, repositoryName, branchName) {
+      Gh3.File.__super__.constructor.call(this, contentItem, ghUser, repositoryName, branchName);
+    },
+    fetchContent : function (callback) {
+      var that = this;
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/contents/"+that.path,
+        success : function(res) {
+          that.content = res.data.content;
+          that.rawContent = Base64.decode(res.data.content);
+
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    fetchCommits : function (callback) {//http://developer.github.com/v3/repos/commits/
+      var that = this;
+      that.commits = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/commits",
+        data : {path: that.path, sha: that.branchName },
+        success : function(res) {
+          _.each(res.data, function (commit) {
+            that.commits.push(new Gh3.Commit(commit, that.user, that.repositoryName));
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    getRawContent : function() { return this.rawContent; },
+    getCommits : function () { return this.commits; },
+    getLastCommit : function () {
+      return this.commits[0];
+    },
+    getFirstCommit : function () {
+      return this.commits[this.commits.length-1];
+    },
+    eachCommit : function (callback) {
+      _.each(this.commits, function (branch) {
+        callback(branch);
+      });
+    },
+    filterCommits : function (comparator) {
+      return _.filter(this.commits, comparator);
+    },
+    reverseCommits : function () {
+      this.commits.reverse();
+    },
+    sortCommits: function (comparison_func) {
+      if (comparison_func) {
+        this.commits.sort(comparison_func);
+      } else {
+        this.commits.sort();
+      }
+    }
+  },{});
+
+
+  Gh3.Dir = Gh3.ItemContent.extend({
+    constructor : function (contentItem, ghUser, repositoryName, branchName) {
+      Gh3.Dir.__super__.constructor.call(this, contentItem, ghUser, repositoryName, branchName);
+    },
+    fetchContents : function (callback) {
+      var that = this;
+      that.contents = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/contents/"+that.path,
+        data : {ref: that.branchName },
+        success : function(res) {
+          _.each(res.data, function (item) {
+            if (item.type == "file") that.contents.push(new Gh3.File(item, that.user, that.repositoryName, that.branchName));
+            if (item.type == "dir") that.contents.push(new Gh3.Dir(item, that.user, that.repositoryName, that.branchName));
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    reverseContents : function () {
+      this.contents.reverse();
+    },
+    sortContents : function (comparison_func) {
+      if (comparison_func) {
+        this.contents.sort(comparison_func);
+      } else {
+        this.contents.sort();
+      }
+    },
+    getContents : function() { return this.contents; },
+    getFileByName : function (name) {
+      return _.find(this.contents, function (item) {
+        return item.name == name && item.type == "file";
+      });
+    },
+    getDirByName : function (name) {
+      return _.find(this.contents, function (item) {
+        return item.name == name && item.type == "dir";
+      });
+    },
+    eachContent : function (callback) {
+      _.each(this.contents, function (branch) {
+        callback(branch);
+      });
+    },
+    filterContents : function (comparator) {
+      return _.filter(this.contents, comparator);
+    }
+
+  },{});
+
+  Gh3.Branch = Kind.extend({
+    constructor : function (name, sha, url, ghUser, repositoryName) {
+      if (name) this.name = name;
+      if (sha) this.sha = sha;
+      if (url) this.url = url;
+
+      if (ghUser) this.user = ghUser;
+      if (repositoryName) this.repositoryName = repositoryName;
+
+    },
+
+    fetchContents : function (callback) { //see how to refactor with Gh3.Dir
+      var that = this;
+      that.contents = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/contents/",
+        data : {ref: that.name },
+        success : function(res) {
+          _.each(res.data, function (item) {
+
+            if (item.type == "file") that.contents.push(new Gh3.File(item, that.user, that.repositoryName, that.name));
+            if (item.type == "dir") that.contents.push(new Gh3.Dir(item, that.user, that.repositoryName, that.name));
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    reverseContents : function () {
+      this.contents.reverse();
+    },
+    sortContents : function (comparison_func) {
+      if (comparison_func) {
+        this.contents.sort(comparison_func);
+      } else {
+        this.contents.sort();
+      }
+    },
+    getContents : function() { return this.contents; },
+    getFileByName : function (name) {
+      return _.find(this.contents, function (item) {
+        return item.name == name && item.type == "file";
+      });
+    },
+    getDirByName : function (name) {
+      return _.find(this.contents, function (item) {
+        return item.name == name && item.type == "dir";
+      });
+    },
+    eachContent : function (callback) {
+      _.each(this.contents, function (branch) {
+        callback(branch);
+      });
+    },
+    filterContents : function (comparator) {
+      return _.filter(this.contents, comparator);
+    }
+
+  },{});
+
+  Gh3.Issue = Kind.extend({
+    constructor : function (number, ghUser, repositoryName, infos) {
+      if (number) this.number = number;
+
+      if (ghUser) this.user = ghUser;
+      if (repositoryName) this.repositoryName = repositoryName;
+
+      if (infos) {
+        for(var prop in infos) {
+          this[prop] = infos[prop];
+        }
+      }
+
+    },
+
+    fetchContents : function (callback) { //see how to refactor with Gh3.Dir
+      var that = this;
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/issues/"+that.id,
+        success : function(res) {
+          _.each(res.data, function (item) {
+            for(var prop in res.data) {
+              that[prop] = res.data[prop];
+            }
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    }
+
+  },{});
+
+  Gh3.Pull = Kind.extend({
+    constructor : function (number, ghUser, repositoryName, infos) {
+      if (number) this.number = number;
+
+      if (ghUser) this.user = ghUser;
+      if (repositoryName) this.repositoryName = repositoryName;
+
+      if (infos) {
+        for(var prop in infos) {
+          this[prop] = infos[prop];
+        }
+      }
+
+    },
+
+    fetchContents : function (callback) { //see how to refactor with Gh3.Dir
+      var that = this;
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.repositoryName+"/pulls/"+that.id,
+        success : function(res) {
+          _.each(res.data, function (item) {
+            for(var prop in res.data) {
+              that[prop] = res.data[prop];
+            }
+          });
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    }
+
+  },{});
+
+  Gh3.Repository = Kind.extend({
+    constructor : function (name, ghUser, infos) {
+
+      if (infos) {
+        for(var prop in infos) {
+          this[prop] = infos[prop];
+        }
+      }
+
+      if (name) this.name = name;
+
+      if (ghUser) this.user = ghUser;
+
+    },
+    fetch : function (callback) {
+      var that = this;
+      //TODO test user.login & name
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.name,
+        success : function(res) {
+          for(var prop in res.data) {
+            that[prop] = res.data[prop];
+          }
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    fetchBranches : function (callback) {
+      var that = this;
+      that.branches = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.name+"/branches",
+        success : function(res) {
+          _.each(res.data, function (branch) {
+            that.branches.push(new Gh3.Branch(branch.name, branch.commit.sha, branch.commit.url, that.user, that.name));
+          });
+
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    fetchIssues : function (callback) {
+      var that = this;
+      that.issues = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.name+"/issues",
+        data : {sort: "updated"},
+        success : function(res) {
+          _.each(res.data, function (issue) {
+            that.issues.push(new Gh3.Issue(issue.number, issue.user, that.name, issue));
+          });
+
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    fetchClosedIssues : function (callback) {
+      var that = this;
+      that.issues = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.name+"/issues",
+        data : {state: "closed", sort: "updated"},
+        success : function(res) {
+          _.each(res.data, function (issue) {
+            that.issues.push(new Gh3.Issue(issue.number, issue.user, that.name, issue));
+          });
+
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    fetchPulls : function (callback) {
+      var that = this;
+      that.pulls = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "repos/"+that.user.login+"/"+that.name+"/pulls",
+        data : {sort: "updated"},
+        success : function(res) {
+          _.each(res.data, function (pull) {
+            that.pulls.push(new Gh3.Pull(pull.number, pull.user, that.name, pull));
+          });
+
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    getBranches : function () { return this.branches; },
+    getBranchByName : function (name) {
+      return _.find(this.branches, function (branch) {
+        return branch.name == name;
+      });
+    },
+    eachBranch : function (callback) {
+      _.each(this.branches, function (branch) {
+        callback(branch);
+      });
+    },
+    reverseBranches : function () {
+      this.branches.reverse();
+    },
+    sortBranches : function (comparison_func) {
+      if (comparison_func) {
+        this.branches.sort(comparison_func);
+      } else {
+        this.branches.sort();
+      }
+    },
+    getIssues : function () { return this.issues; },
+    eachIssue : function (callback) {
+      _.each(this.issues, function (issue) {
+        callback(issue);
+      });
+    },
+    reverseIssues : function () {
+      this.issues.reverse();
+    },
+    getPulls : function () { return this.pulls; },
+    eachPull : function (callback) {
+      _.each(this.pulls, function (pull) {
+        callback(pull);
+      });
+    },
+    reversePulls : function () {
+      this.pulls.reverse();
+    }
+
+  },{});
+
+  //TODO: Repositories for an organization
+
+  Gh3.Repositories = Kind.extend({//http://developer.github.com/v3/repos/
+    constructor : function (ghUser) {
+
+      if (ghUser) this.user = ghUser;
+
+    },
+    //List user repositories
+    fetch : function (pagesInfoAndParameters, paginationInfo, callback) {
+      var that = this;
+      that.repositories = [];
+
+      Gh3.Helper.callHttpApi({
+        service : "users/"+that.user.login+"/repos",
+        data : pagesInfoAndParameters,
+        //beforeSend: function (xhr) { xhr.setRequestHeader ("rel", paginationInfo); }, --> why ? (pagination)
+        success : function(res) {
+          _.each(res.data, function (repository) {
+            that.repositories.push(new Gh3.Repository(repository.name, that.user));
+          });
+
+          if (callback) callback(null, that);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    reverseRepositories : function () {
+      this.repositories.reverse();
+    },
+    sortRepositories : function (comparison_func) {
+      if (comparison_func) {
+        this.repositories.sort(comparison_func);
+      } else {
+        this.repositories.sort();
+      }
+    },
+    getRepositories : function() { return this.repositories; },
+    getRepositoryByName : function (name) {
+      return _.find(this.repositories, function (item) {
+        return item.name == name;
+      });
+    },
+
+    eachRepository : function (callback) {
+      _.each(this.repositories, function (repository) {
+        callback(repository);
+      });
+    },
+    filterRepositories : function (comparator) {
+      return _.filter(this.repositories, comparator);
+    }
+
+
+  },{//static members
+    repositories : [],
+    search : function (keyword, pagesInfo, callback) {
+      Gh3.Repositories.repositories = [];
+      Gh3.Helper.callHttpApi({
+        service : "legacy/repos/search/"+keyword,
+        data : pagesInfo,
+        //beforeSend: function (xhr) { xhr.setRequestHeader ("rel", paginationInfo); },
+        success : function(res) {
+          //console.log("*** : ", res);
+          _.each(res.data.repositories, function (repository) {
+            Gh3.Repositories.repositories.push(new Gh3.Repository(repository.name, new Gh3.User(repository.owner), repository));
+            //owner & login : same thing ???
+          });
+
+          if (callback) callback(null, Gh3.Repositories);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+
+    },
+    reverse : function () {
+      Gh3.Repositories.repositories.reverse();
+    },
+    sort : function (comparison_func) {
+      if (comparison_func) {
+        Gh3.Repositories.repositories.sort(comparison_func);
+      } else {
+        Gh3.Repositories.repositories.sort();
+      }
+    },
+    getAll : function() { return Gh3.Repositories.repositories; },
+    getByName : function (name) {
+      return _.find(Gh3.Repositories.repositories, function (item) {
+        return item.name == name;
+      });
+    },
+    each : function (callback) {
+      _.each(Gh3.Repositories.repositories, function (repository) {
+        callback(repository);
+      });
+    },
+    filter : function (comparator) {
+      return _.filter(Gh3.Repositories.repositories, comparator);
+    }
+  });
+
+
+  Gh3.Search = Kind.extend({
+  },{
+    repos : function (params, pagesInfo, callback) {
+      Gh3.Search._template(params, pagesInfo, callback, 'search/repositories',
+                 function (rep) {
+                   return new Gh3.Repository(rep.name, new Gh3.User(rep.owner), rep);
+                 });
+    },
+    code : function (params, pagesInfo, callback) {
+      Gh3.Search._template(params, pagesInfo, callback, 'search/code');
+    },
+    issues : function (params, pagesInfo, callback) {
+      var reg = /.*\/(.*)\/issues\/.*/;
+      Gh3.Search._template(params, pagesInfo, callback, 'search/issues',
+                function (iss) {
+                  var rep = reg.exec(iss.html_url);
+                  if (rep && rep[1])
+                    return new Gh3.Issue(iss.number, iss.user, rep[1], iss);
+                  else return null;
+                });
+    },
+    users : function (params, pagesInfo, callback) {
+      Gh3.Search._template(params, pagesInfo, callback, 'search/users',
+                 function (user) {
+                   return new Gh3.User(user.login, user);
+                 });
+    },
+    _template : function (params, pagesInfo, callback, service, createObj) {
+      var data = $.extend({}, params, pagesInfo);
+      Gh3.Helper.callHttpApi({
+        service : service + '?' + decodeURIComponent($.param(data)),
+        success : function(res, text, jq) {
+          var items = [];
+          if (createObj) {
+            _.each(res.data.items, function (item) {
+              var obj = createObj(item);
+              if (obj)
+                items.push(obj);
+            });
+          } else {
+            items = res.data.items;
+          }
+
+          if (callback) callback(null, items);
+        },
+        error : function (res) {
+          if (callback) callback(new Error(res.responseJSON.message),res);
+        }
+      });
+    }
+  });
+
 }).call(this);
