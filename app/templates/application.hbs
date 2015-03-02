@@ -1,3 +1,32 @@
-<h2 id="title">Welcome to Ember.js</h2>
+<div class="row">
+	<div class="col-md-1"> </div>
+	<div class="col-md-2">
+		<h3>User Name: {{login}}</h3>
+		<div class="panel panel-default">
+		  <div class="panel-heading">About</div>
+			  <div class="panel-body">
+			    <center><strong>User <br>Profile<br> Image <br>Here</strong></center>
+			  </div>
+			  <ul class="list-group">
+  				<li class="list-group-item">Name: {{name}}</li>
+  				<li class="list-group-item">Company: {{company}}</li>
+  				<li class="list-group-item">BlogURL: {{blog}}</li>
+  				<li class="list-group-item">Follower Count: {{followers}}</li>
+  				<li class="list-group-item">Following Count: {{following}}</li>
+  				<li class="list-group-item">Creation Date: {{created_at}}</li>
+			  </ul>
+			</div>
+	</div>
+
+	<div class="col-md-7"> 
+		<h3>Repositories</h3>
+		<div class="well"><strong> Repository Title</strong><br> Repo Description </div>
+		<div class="well"><strong> Repository Title</strong> <br>Repo Description </div>
+		<div class="well"><strong> Repository Title</strong> <br>Repo Description </div>
+		<div class="well"><strong> Repository Title</strong> <br>Repo Description </div>
+	</div>
+
+</div>
+
 
 {{outlet}}

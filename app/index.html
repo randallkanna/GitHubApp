@@ -7,17 +7,50 @@
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    {{content-for 'head'}}
+     {{content-for 'head'}}
 
     <link rel="stylesheet" href="assets/vendor.css">
     <link rel="stylesheet" href="assets/github-app.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
 
     {{content-for 'head-footer'}}
   </head>
+
   <body>
+   <nav class="navbar navbar-default">
+    <div class="container-fluid">
+      <div class="navbar-header">
+        <a class="navbar-brand" href="/">GitHub App</a>
+      </div>
+
+      <!-- Collect the nav links, forms, and other content for toggling -->
+      <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+        <ul class="nav navbar-nav">
+          <li><a href="/users">User</a></li>
+        </ul>
+        <ul class="nav navbar-nav navbar-right">
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
     {{content-for 'body'}}
+
+    <script type="bower_components/jquery/dist/jquery.js"></script>
+    
+    <script src="node_modules/github-api/node_modules/underscore/underscore.js"></script>
+    <script src="node_modules/github-api/node_modules/xmlhttprequest/lib/xmlhttprequest.js"></script>
+    <script src="node_modules/github-api/node_modules/atob/bin/atob.js"></script>
+    <script src="node_modules/github-api/node_modules/btoa/bin/btoa.js"></script>
+    <script src="node_modules/github-api/github.js"></script>
+
+    <script src="assets/github.js"></script>
     <script src="assets/vendor.js"></script>
-    <script src="assets/github-app.js"></script>
+   <script src="assets/github-app.js"></script>
+   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js"></script>
+
+
     {{content-for 'body-footer'}}
 
   </body>
