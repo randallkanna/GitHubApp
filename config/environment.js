@@ -6,6 +6,17 @@ module.exports = function(environment) {
     environment: environment,
     baseURL: '/',
     locationType: 'auto',
+
+    contentSecurityPolicy: {
+    'default-src': "'none'",
+    'script-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+    'font-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+    'connect-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+    'img-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+    'style-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+    'media-src': "'self' 'unsafe-eval' https://api.github.com/ "
+    },
+
     EmberENV: {
       FEATURES: {
         // Here you can enable experimental features on an ember canary build
