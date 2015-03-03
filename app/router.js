@@ -6,9 +6,12 @@ var Router = Ember.Router.extend({
 });
 
 Router.map(function() {
-  this.resource('users');
-  this.resource('user', { path: '/users/:user_id' });
-  this.route('repo');
+  this.route('index');
+  this.resource('user', { path: '/:username' }, function() {
+  	this.resource('repos', function() {
+  		this.resource('repo', { path: '/:username/repos/:reponame' })
+  	});
+  });
 });
 
 export default Router;
