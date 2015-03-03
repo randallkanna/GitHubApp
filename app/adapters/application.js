@@ -2,7 +2,6 @@
 
 
 // export default DS.RESTAdapter.extend({
-// 	host: 'api.github.com',
-
-
+// 	namespace: '/randalldiann',
+//     host: 'https://api.github.com'
 // });
