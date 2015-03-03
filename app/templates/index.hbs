@@ -1,7 +1,11 @@
 <h1>Welcome!</h1>
 
-<form>
-	<input {{bind-attr id="username"}} type="text" placeholder="Username">
-	<input {{bind-attr id="password"}} type="password" placeholder="Password">
-	<input {{action "submitAction"}} type="submit" value="Log In">
+<form {{action "login" on="submit"}}>
+	{{input value=username id='username' placeholder="Username"}}
+	{{input type="password" id='password' placeholder="Password"}}
+	{{input type="submit" value="Log In"}}
+
+	{{#if loginFailed}}
+	  <div class="alert alert-danger">Invalid username or password.</div>
+	{{/if}}
 </form>
