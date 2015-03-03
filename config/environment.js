@@ -16,6 +16,15 @@ module.exports = function(environment) {
     APP: {
       // Here you can pass flags/options to your application instance
       // when it is created
+    },
+    contentSecurityPolicy: {
+     'default-src': "'none'",
+     'script-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+     'font-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+     'connect-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+     'img-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+     'style-src': "'self' 'unsafe-eval' https://api.github.com/ ",
+     'media-src': "'self' 'unsafe-eval' https://api.github.com/ "
     }
   };
 
