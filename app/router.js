@@ -8,6 +8,7 @@ var Router = Ember.Router.extend({
 Router.map(function() {
   this.resource('users');
   this.resource('user', { path: '/users/:user_id' });
+  this.route('repo');
 });
 
 export default Router;
